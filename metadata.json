@@ -1,0 +1,6 @@
+{
+  "name": "DaCaller",
+  "description": "An offline-first, mobile-friendly Ministry Outreach Dialer to manage contacts and log calls efficiently.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

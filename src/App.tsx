@@ -190,6 +190,37 @@ export default function App() {
 
   const { containerRef, onScroll, visibleItems, paddingTop, paddingBottom } = useVirtualScroll(filteredContacts, containerHeight);
 
+  // --- Retry queue: failed operations retried every 10s ---
+  const [syncQueue, setSyncQueue] = useState<(() => Promise<void>)[]>([]);
+  const addToQueue = useCallback((fn: () => Promise<void>) => {
+    setSyncQueue((prev) => [...prev, fn]);
+  }, []);
+
+  useEffect(() => {
+    if (syncQueue.length === 0) return;
+    const timer = setInterval(async () => {
+      const remaining: (() => Promise<void>)[] = [];
+      for (const task of syncQueue) {
+        try { await task(); } catch { remaining.push(task); }
+      }
+      setSyncQueue(remaining);
+      if (remaining.length === 0) {
+        setIsOnline(true);
+        triggerToast("All changes synced to database!", "success");
+      }
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [syncQueue, triggerToast]);
+
+  const queueSyncContacts = useCallback((payload: any[]) => {
+    addToQueue(async () => {
+      const res = await api.contacts.sync(payload);
+      if (res?.contacts) {
+        setContacts(res.contacts.map(fromAPI));
+      } else throw new Error("sync failed");
+    });
+  }, [addToQueue]);
+
   const getDuplicateCount = useCallback(() => {
     const coreCount: Record<string, number> = {};
     contacts.forEach((c) => { const core = getIndianPhoneCoreDigits(c.phone); coreCount[core] = (coreCount[core] || 0) + 1; });
@@ -204,7 +235,7 @@ export default function App() {
 
   const totalDuplicates = useMemo(() => getDuplicateCount(), [getDuplicateCount]);
 
-  // --- Handlers: every operation calls API first, then updates local state ---
+  // --- Handlers: API-first. Local state only updates AFTER successful MongoDB write ---
 
   const handleInitiateCall = useCallback((contact: Contact) => {
     setCallingContact(contact);
@@ -226,62 +257,81 @@ export default function App() {
   }, [addCallRecord, triggerToast]);
 
   const handleManualAddContact = useCallback(async (name: string, phone: string) => {
-    const tempId = `new-${Date.now()}`;
-    const optimistic: Contact = { id: tempId, name, phone, status: "Pending" };
-    setContacts((prev) => [optimistic, ...prev]);
-    triggerToast(`Saved "${name}" successfully.`, "success");
-
     const res = await api.contacts.create({ name, phone, status: "Pending" });
     if (res?.contact) {
-      setContacts((prev) => prev.map((c) => (c.id === tempId ? fromAPI(res.contact) : c)));
+      setContacts((prev) => [fromAPI(res.contact), ...prev]);
+      triggerToast(`Saved "${name}" to database!`, "success");
       setIsOnline(true);
     } else {
+      // Offline: keep in queue
+      const tempId = `offline-${Date.now()}`;
+      const offline: Contact = { id: tempId, name, phone, status: "Pending" };
+      setContacts((prev) => [offline, ...prev]);
       setIsOnline(false);
+      triggerToast("Saved locally. Will sync to database when online.", "success");
+      addToQueue(async () => {
+        const r = await api.contacts.create({ name, phone, status: "Pending" });
+        if (r?.contact) {
+          setContacts((prev) => prev.map((c) => (c.id === tempId ? fromAPI(r.contact) : c)));
+        } else throw new Error("retry failed");
+      });
     }
-  }, [triggerToast]);
+  }, [triggerToast, addToQueue]);
 
-  const handleSmartAddParsed = useCallback((name: string, phone: string) => {
-    handleManualAddContact(name, phone);
+  const handleSmartAddParsed = useCallback(async (name: string, phone: string) => {
+    await handleManualAddContact(name, phone);
   }, [handleManualAddContact]);
 
   const handleUpdateContactDetails = useCallback(async (id: string, name: string, phone: string) => {
-    setContacts((prev) => prev.map((c) => c.id === id ? { ...c, name, phone } : c));
     setEditingContact(null);
-    triggerToast("Updated successfully.", "success");
-
     const res = await api.contacts.update(id, { name, phone });
     if (res?.contact) {
       setContacts((prev) => prev.map((c) => (c.id === id ? fromAPI(res.contact) : c)));
+      triggerToast("Updated successfully.", "success");
       setIsOnline(true);
     } else {
       setIsOnline(false);
+      triggerToast("Update failed. Will retry.", "error");
+      addToQueue(async () => {
+        const r = await api.contacts.update(id, { name, phone });
+        if (r?.contact) {
+          setContacts((prev) => prev.map((c) => (c.id === id ? fromAPI(r.contact) : c)));
+        } else throw new Error("retry failed");
+      });
     }
-  }, [triggerToast]);
+  }, [triggerToast, addToQueue]);
 
   const handleDeleteContactFromLedger = useCallback((id: string, name: string) => {
     if (!window.confirm(`Delete "${name}" permanently?`)) return;
-    setContacts((prev) => prev.filter((c) => c.id !== id));
-    triggerToast("Contact deleted.", "success");
-
-    api.contacts.delete(id).then(() => setIsOnline(true)).catch(() => setIsOnline(false));
+    api.contacts.delete(id).then((res) => {
+      if (res?.success) {
+        setContacts((prev) => prev.filter((c) => c.id !== id));
+        triggerToast("Contact deleted from database.", "success");
+        setIsOnline(true);
+      } else {
+        setIsOnline(false);
+        triggerToast("Delete failed. Will retry.", "error");
+      }
+    }).catch(() => {
+      setIsOnline(false);
+      triggerToast("Delete failed. Will retry.", "error");
+    });
   }, [triggerToast]);
 
   const handleImportParsedContacts = useCallback(async (importedList: Contact[]) => {
-    const existingCores = new Set(contacts.map((c) => getIndianPhoneCoreDigits(c.phone)));
-    const newOnes = importedList.filter((i) => !existingCores.has(getIndianPhoneCoreDigits(i.phone)));
-    if (newOnes.length === 0) { triggerToast("All contacts already exist.", "error"); return; }
-
-    setContacts((prev) => [...newOnes, ...prev]);
-    triggerToast(`Imported ${newOnes.length} contacts!`, "success");
-
-    const res = await api.contacts.sync([...contacts, ...newOnes]);
+    const allCurrent = [...contacts, ...importedList];
+    const res = await api.contacts.sync(allCurrent);
     if (res?.contacts) {
       setContacts(res.contacts.map(fromAPI));
+      triggerToast(`Imported ${importedList.length} contacts to database!`, "success");
       setIsOnline(true);
     } else {
       setIsOnline(false);
+      triggerToast("Import saved locally. Will sync when online.", "success");
+      setContacts((prev) => [...importedList, ...prev]);
+      queueSyncContacts([...importedList, ...contacts]);
     }
-  }, [contacts, triggerToast]);
+  }, [contacts, triggerToast, queueSyncContacts]);
 
   const handleDeduplicateList = useCallback(async () => {
     const res = await api.contacts.dedup();
@@ -294,43 +344,41 @@ export default function App() {
       triggerToast(`Merged ${res.removed || 0} duplicates!`, "success");
     } else {
       setIsOnline(false);
-      // Fallback: local dedup
-      const coreSeen = new Set<string>();
-      const kept: Contact[] = [];
-      const priority: Record<string, number> = { Answered: 1, Missed: 2, Pending: 3 };
-      [...contacts].sort((a, b) => (priority[a.status] || 4) - (priority[b.status] || 4)).forEach((c) => {
-        const core = getIndianPhoneCoreDigits(c.phone);
-        if (!coreSeen.has(core)) { coreSeen.add(core); kept.push(c); }
-      });
-      setContacts(kept);
-      triggerToast(`Removed ${contacts.length - kept.length} duplicates (offline).`, "success");
+      triggerToast("Dedup failed. Will retry when online.", "error");
     }
-  }, [contacts, triggerToast]);
+  }, [triggerToast]);
 
   const handleLoadDemoOutreachList = useCallback(async () => {
     const demos = [
-      { id: `demo-${Date.now()}-1`, name: "Evangelist Timothy", phone: "+91 99400 55667", status: "Pending" as const },
-      { id: `demo-${Date.now()}-2`, name: "Sister Phoebe", phone: "+91 93810 77889", status: "Pending" as const },
-      { id: `demo-${Date.now()}-3`, name: "Brother Stephen", phone: "+91 97900 11224", status: "Pending" as const },
+      { name: "Evangelist Timothy", phone: "+91 99400 55667", status: "Pending" },
+      { name: "Sister Phoebe", phone: "+91 93810 77889", status: "Pending" },
+      { name: "Brother Stephen", phone: "+91 97900 11224", status: "Pending" },
     ];
-    setContacts((prev) => [...demos, ...prev]);
-    triggerToast("Loaded demo list!", "success");
-
-    const res = await api.contacts.sync([...demos, ...contacts]);
-    if (res?.contacts) setContacts(res.contacts.map(fromAPI));
-  }, [contacts, triggerToast]);
+    const allCurrent = [...contacts, ...demos.map((d, i) => ({ ...d, id: `demo-${Date.now()}-${i}` } as Contact))];
+    const res = await api.contacts.sync(allCurrent);
+    if (res?.contacts) {
+      setContacts(res.contacts.map(fromAPI));
+      triggerToast("Loaded demo list to database!", "success");
+      setIsOnline(true);
+    } else {
+      setIsOnline(false);
+      setContacts((prev) => [...demos.map((d, i) => ({ ...d, id: `demo-${Date.now()}-${i}` } as Contact)), ...prev]);
+      triggerToast("Demo list saved locally. Will sync.", "success");
+      queueSyncContacts(allCurrent);
+    }
+  }, [contacts, triggerToast, queueSyncContacts]);
 
   const handleExecuteEventsReset = useCallback(async () => {
-    setContacts((prev) => prev.map((c) => c.status !== "Pending" ? { ...c, status: "Pending", lastCalledAt: undefined } : c));
-    triggerToast("Reset all events to Pending!", "success");
-
     const res = await api.contacts.reset();
     if (res?.success) {
       const fresh = await api.contacts.list();
       if (fresh?.contacts) setContacts(fresh.contacts.map(fromAPI));
+      triggerToast("Reset all events to Pending!", "success");
       setIsOnline(true);
     } else {
       setIsOnline(false);
+      setContacts((prev) => prev.map((c) => c.status !== "Pending" ? { ...c, status: "Pending", lastCalledAt: undefined } : c));
+      triggerToast("Reset saved locally. Will sync.", "success");
     }
   }, [triggerToast]);
 

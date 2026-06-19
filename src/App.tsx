@@ -8,6 +8,7 @@ import { Contact, CallRecord, SortOption, TabOption, ViewMode } from "./types";
 import { getIndianPhoneCoreDigits } from "./utils/phone";
 import { useTheme } from "./hooks/useTheme";
 import { useVirtualScroll, ROW_HEIGHT } from "./hooks/useVirtualScroll";
+import { api } from "./api";
 
 import Toast from "./components/Toast";
 import ContactRow from "./components/ContactRow";
@@ -69,6 +70,25 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(callHistory));
   }, [callHistory]);
+
+  // Sync to MongoDB backend when available (non-blocking)
+  const syncRef = useRef(null);
+  useEffect(() => {
+    clearTimeout(syncRef.current);
+    syncRef.current = setTimeout(() => {
+      api.contacts.bulkCreate(contacts).catch(() => {});
+    }, 5000);
+    return () => clearTimeout(syncRef.current);
+  }, [contacts]);
+
+  useEffect(() => {
+    if (callHistory.length === 0) return;
+    const last = callHistory[callHistory.length - 1];
+    const timer = setTimeout(() => {
+      api.history.create(last).catch(() => {});
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [callHistory.length]);
 
   useEffect(() => {
     const updateHeight = () => setContainerHeight(window.innerHeight - 340);

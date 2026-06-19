@@ -4,6 +4,44 @@ import { connectDB } from "../db.js";
 
 const router = Router();
 
+// POST /api/contacts/sync — full sync (upsert by phone + delete missing)
+router.post("/sync", async (req, res) => {
+  try {
+    await connectDB();
+    const { contacts } = req.body;
+    if (!Array.isArray(contacts)) {
+      return res.status(400).json({ error: "contacts must be an array" });
+    }
+
+    const incomingPhones = new Set();
+    const operations = contacts.map((c) => {
+      const core = c.phone?.replace(/[^0-9]/g, "").slice(-10);
+      if (core) incomingPhones.add(core);
+      return {
+        updateOne: {
+          filter: { phoneCore: core },
+          update: { $set: { ...c, phoneCore: core, updatedAt: new Date() } },
+          upsert: true,
+        },
+      };
+    });
+
+    if (operations.length > 0) {
+      await Contact.bulkWrite(operations);
+    }
+
+    // Remove contacts not in incoming list
+    if (incomingPhones.size > 0) {
+      await Contact.deleteMany({ phoneCore: { $nin: Array.from(incomingPhones) } });
+    }
+
+    const synced = await Contact.find({}).sort({ status: 1, name: 1 }).lean();
+    res.json({ contacts: synced, total: synced.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/contacts — list all with optional filters
 router.get("/", async (req, res) => {
   try {

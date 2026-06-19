@@ -71,24 +71,61 @@ export default function App() {
     localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(callHistory));
   }, [callHistory]);
 
-  // Sync to MongoDB backend when available (non-blocking)
-  const syncRef = useRef(null);
+  // Load from API on mount (merge with localStorage, API wins)
+  const [apiReady, setApiReady] = useState(false);
   useEffect(() => {
-    clearTimeout(syncRef.current);
-    syncRef.current = setTimeout(() => {
-      api.contacts.bulkCreate(contacts).catch(() => {});
-    }, 5000);
-    return () => clearTimeout(syncRef.current);
-  }, [contacts]);
+    api.contacts.list().then((res) => {
+      if (res?.contacts && res.contacts.length > 0) {
+        const mapped = res.contacts.map((c: any) => ({
+          id: c._id || c.id || `api-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          name: c.name,
+          phone: c.phone,
+          status: c.status,
+          role: c.role || "",
+          lastCalledAt: c.lastCalledAt,
+          callCount: c.callCount || 0,
+        }));
+        setContacts(mapped);
+        localStorage.setItem(STORAGE_KEYS.contacts, JSON.stringify(mapped));
+      }
+      setApiReady(true);
+    }).catch(() => setApiReady(true));
+  }, []);
 
+  // Sync to MongoDB when contacts change (debounced)
+  const syncRef = useRef<ReturnType<typeof setTimeout>>(null);
   useEffect(() => {
-    if (callHistory.length === 0) return;
-    const last = callHistory[callHistory.length - 1];
-    const timer = setTimeout(() => {
-      api.history.create(last).catch(() => {});
+    if (!apiReady) return;
+    clearTimeout(syncRef.current);
+    syncRef.current = setTimeout(async () => {
+      const result = await api.contacts.sync(contacts);
+      if (result?.contacts) {
+        const mapped = result.contacts.map((c: any) => ({
+          id: c._id || c.id,
+          name: c.name,
+          phone: c.phone,
+          status: c.status,
+          role: c.role || "",
+          lastCalledAt: c.lastCalledAt,
+          callCount: c.callCount || 0,
+        }));
+        localStorage.setItem(STORAGE_KEYS.contacts, JSON.stringify(mapped));
+      }
     }, 3000);
-    return () => clearTimeout(timer);
-  }, [callHistory.length]);
+    return () => clearTimeout(syncRef.current);
+  }, [contacts, apiReady]);
+
+  // Sync call history
+  const historySyncRef = useRef<ReturnType<typeof setTimeout>>(null);
+  useEffect(() => {
+    if (!apiReady || callHistory.length === 0) return;
+    clearTimeout(historySyncRef.current);
+    historySyncRef.current = setTimeout(async () => {
+      const last = callHistory[callHistory.length - 1];
+      await api.history.create(last).catch(() => {});
+    }, 2000);
+    return () => clearTimeout(historySyncRef.current);
+  }, [callHistory.length, apiReady]);
 
   useEffect(() => {
     const updateHeight = () => setContainerHeight(window.innerHeight - 340);

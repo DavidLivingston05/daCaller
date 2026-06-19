@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 const ContactSchema = new mongoose.Schema({
   name: { type: String, required: true },
   phone: { type: String, required: true },
+  phoneCore: { type: String, unique: true, sparse: true },
   role: { type: String, default: "" },
   status: {
     type: String,

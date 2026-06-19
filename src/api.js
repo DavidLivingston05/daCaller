@@ -38,10 +38,10 @@ export const api = {
       }),
     delete: (id) =>
       request(`/contacts/${id}`, { method: "DELETE" }),
-    bulkCreate: (contacts) =>
-      request("/contacts", {
+    sync: (contacts) =>
+      request("/contacts/sync", {
         method: "POST",
-        body: JSON.stringify(contacts),
+        body: JSON.stringify({ contacts }),
       }),
     dedup: () =>
       request("/contacts/dedup", { method: "POST" }),

@@ -45,6 +45,7 @@ export default function App() {
   const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
   const [isOnline, setIsOnline] = useState(true);
   const [dbConnected, setDbConnected] = useState<boolean | null>(null);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error">("idle");
   const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -66,8 +67,10 @@ export default function App() {
   useEffect(() => {
     (async () => {
       // Check DB connection status first
+      setSyncStatus("syncing");
       const status = await api.server.status();
       setDbConnected(status?.online === true);
+      if (!status) { setSyncStatus("error"); setIsOnline(false); }
 
       try {
         const res = await api.contacts.list();
@@ -91,6 +94,7 @@ export default function App() {
           try { setContacts(JSON.parse(cached)); } catch { }
         }
       }
+      setSyncStatus("idle");
       setLoading(false);
     })();
   }, []);
@@ -201,21 +205,33 @@ export default function App() {
     setSyncQueue((prev) => [...prev, fn]);
   }, []);
 
+  const flushQueue = useCallback(async () => {
+    const tasks = syncQueue;
+    if (tasks.length === 0) return;
+    setSyncStatus("syncing");
+    const remaining: (() => Promise<void>)[] = [];
+    for (const task of tasks) {
+      try { await task(); } catch { remaining.push(task); }
+    }
+    setSyncQueue(remaining);
+    if (remaining.length === 0) {
+      setSyncStatus("idle");
+      setIsOnline(true);
+      triggerToast("All changes synced to database!", "success");
+    } else {
+      setSyncStatus("error");
+    }
+  }, [syncQueue, triggerToast]);
+
+  // Expose flushQueue to the sync button via a ref
+  const retryQueueRef = useRef(flushQueue);
+  retryQueueRef.current = flushQueue;
+
   useEffect(() => {
     if (syncQueue.length === 0) return;
-    const timer = setInterval(async () => {
-      const remaining: (() => Promise<void>)[] = [];
-      for (const task of syncQueue) {
-        try { await task(); } catch { remaining.push(task); }
-      }
-      setSyncQueue(remaining);
-      if (remaining.length === 0) {
-        setIsOnline(true);
-        triggerToast("All changes synced to database!", "success");
-      }
-    }, 10000);
+    const timer = setInterval(flushQueue, 10000);
     return () => clearInterval(timer);
-  }, [syncQueue, triggerToast]);
+  }, [syncQueue, flushQueue]);
 
   const queueSyncContacts = useCallback((payload: any[]) => {
     addToQueue(async () => {
@@ -470,8 +486,20 @@ export default function App() {
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white select-none leading-tight">DaCaller</h1>
               <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide uppercase select-none flex items-center gap-1">
-                {isOnline ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-rose-400" />}
+                {syncStatus === "syncing" ? (
+                  <svg className="w-3 h-3 text-blue-500 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                ) : syncStatus === "error" || !isOnline ? (
+                  <WifiOff className="w-3 h-3 text-rose-400" />
+                ) : dbConnected === false ? (
+                  <Database className="w-3 h-3 text-amber-500" />
+                ) : (
+                  <Database className="w-3 h-3 text-emerald-500" />
+                )}
                 {contacts.length} contacts
+                {syncQueue.length > 0 && <span className="text-amber-500 font-bold">({syncQueue.length} pending)</span>}
               </p>
             </div>
           </div>
@@ -487,6 +515,14 @@ export default function App() {
                 className={`p-2 rounded-lg transition-all cursor-pointer ${viewMode === "stats" ? "bg-white dark:bg-slate-700 shadow-sm" : "text-slate-400"}`}
                 title="Statistics"><BarChart3 className="w-4 h-4" /></button>
             </div>
+            {syncQueue.length > 0 && (
+              <button onClick={() => retryQueueRef.current?.()}
+                className="p-2 rounded-xl bg-amber-100 dark:bg-amber-800/50 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-700/50 transition-colors cursor-pointer relative"
+                title="Sync pending changes now">
+                <Database className="w-4 h-4" />
+                <span className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{syncQueue.length}</span>
+              </button>
+            )}
             <button onClick={toggleTheme}
               className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
               title="Toggle theme">

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#059669"/>
+      <stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="100%" stop-color="#10B981"/>
+    </linearGradient>
+    <filter id="glow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#059669" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="80" fill="url(#bg)"/>
+  <g transform="translate(256,240)" filter="url(#glow)">
+    <rect x="-36" y="-56" width="72" height="8" rx="4" fill="#A7F3D0" opacity="0.6"/>
+    <rect x="-36" y="-40" width="72" height="8" rx="4" fill="#A7F3D0" opacity="0.6"/>
+    <rect x="-10" y="-24" width="20" height="80" rx="10" fill="#fff"/>
+    <rect x="10" y="-16" width="12" height="72" rx="6" fill="#34D399"/>
+    <circle cx="56" cy="-8" r="20" fill="none" stroke="url(#ring)" stroke-width="5"/>
+    <circle cx="56" cy="-8" r="6" fill="#fff"/>
+    <path d="M-56 48 Q-56 8 -20 8" fill="none" stroke="#6EE7B7" stroke-width="4" stroke-linecap="round"/>
+    <path d="M56 48 Q56 8 20 8" fill="none" stroke="#6EE7B7" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <text x="256" y="420" font-family="system-ui, -apple-system, sans-serif" font-size="48" font-weight="800" fill="#fff" text-anchor="middle" letter-spacing="4">DaCaller</text>
+</svg>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Search, X, Plus, MoreVertical, Sparkles, Download, Database, Moon, Sun,
-  PhoneCall, BarChart3, List, Radio
+  PhoneCall, BarChart3, List, Radio, Wifi, WifiOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Contact, CallRecord, SortOption, TabOption, ViewMode } from "./types";
@@ -21,32 +21,30 @@ import CallModal from "./components/CallModal";
 import RapidDial from "./components/RapidDial";
 import StatsDashboard from "./components/StatsDashboard";
 
-const INITIAL_CONTACTS: Contact[] = [
-  { id: "1", name: "Pastor Elkhana", phone: "+91 98401 23456", status: "Pending", role: "Pastor" },
-  { id: "2", name: "Sister Abigail", phone: "+91 94440 98765", status: "Answered" },
-  { id: "3", name: "Brother Barnabas", phone: "+91 91235 55432", status: "Pending" },
-  { id: "4", name: "Deacon Joshua", phone: "+91 98840 11223", status: "Missed", role: "Deacon" },
-  { id: "5", name: "Sister Naomi", phone: "+91 81220 44556", status: "Pending" }
-];
-
-const STORAGE_KEYS = {
+const CACHE_KEYS = {
   contacts: "outreach_contacts",
   history: "outreach_call_history",
 };
 
+function fromAPI(c: any): Contact {
+  return {
+    id: c._id || c.id,
+    name: c.name,
+    phone: c.phone,
+    status: c.status || "Pending",
+    role: c.role || "",
+    lastCalledAt: c.lastCalledAt,
+    callCount: c.callCount || 0,
+  };
+}
+
 export default function App() {
   const { dark, toggle: toggleTheme } = useTheme();
   const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [contacts, setContacts] = useState<Contact[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.contacts);
-    if (saved) { try { return JSON.parse(saved); } catch {} }
-    return INITIAL_CONTACTS;
-  });
-  const [callHistory, setCallHistory] = useState<CallRecord[]>(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.history);
-    if (saved) { try { return JSON.parse(saved); } catch {} }
-    return [];
-  });
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
+  const [isOnline, setIsOnline] = useState(true);
+  const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<TabOption>("All");
@@ -63,69 +61,45 @@ export default function App() {
   const [sortBy, setSortBy] = useState<SortOption>("Status");
   const [containerHeight, setContainerHeight] = useState(600);
 
+  // --- Load from MongoDB on mount, fall back to localStorage cache ---
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.contacts, JSON.stringify(contacts));
-  }, [contacts]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.history, JSON.stringify(callHistory));
-  }, [callHistory]);
-
-  // Load from API on mount (merge with localStorage, API wins)
-  const [apiReady, setApiReady] = useState(false);
-  useEffect(() => {
-    api.contacts.list().then((res) => {
-      if (res?.contacts && res.contacts.length > 0) {
-        const mapped = res.contacts.map((c: any) => ({
-          id: c._id || c.id || `api-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          name: c.name,
-          phone: c.phone,
-          status: c.status,
-          role: c.role || "",
-          lastCalledAt: c.lastCalledAt,
-          callCount: c.callCount || 0,
-        }));
-        setContacts(mapped);
-        localStorage.setItem(STORAGE_KEYS.contacts, JSON.stringify(mapped));
+    (async () => {
+      try {
+        const res = await api.contacts.list();
+        if (res?.contacts && res.contacts.length > 0) {
+          const mapped = res.contacts.map(fromAPI);
+          setContacts(mapped);
+          localStorage.setItem(CACHE_KEYS.contacts, JSON.stringify(mapped));
+          setIsOnline(true);
+        } else {
+          // Server online but empty — use cache or init
+          const cached = localStorage.getItem(CACHE_KEYS.contacts);
+          if (cached) {
+            try { setContacts(JSON.parse(cached)); } catch { }
+          }
+          setIsOnline(true);
+        }
+      } catch {
+        setIsOnline(false);
+        const cached = localStorage.getItem(CACHE_KEYS.contacts);
+        if (cached) {
+          try { setContacts(JSON.parse(cached)); } catch { }
+        }
       }
-      setApiReady(true);
-    }).catch(() => setApiReady(true));
+      setLoading(false);
+    })();
   }, []);
 
-  // Sync to MongoDB when contacts change (debounced)
-  const syncRef = useRef<ReturnType<typeof setTimeout>>(null);
+  // --- Persist to localStorage cache whenever state changes ---
   useEffect(() => {
-    if (!apiReady) return;
-    clearTimeout(syncRef.current);
-    syncRef.current = setTimeout(async () => {
-      const result = await api.contacts.sync(contacts);
-      if (result?.contacts) {
-        const mapped = result.contacts.map((c: any) => ({
-          id: c._id || c.id,
-          name: c.name,
-          phone: c.phone,
-          status: c.status,
-          role: c.role || "",
-          lastCalledAt: c.lastCalledAt,
-          callCount: c.callCount || 0,
-        }));
-        localStorage.setItem(STORAGE_KEYS.contacts, JSON.stringify(mapped));
-      }
-    }, 3000);
-    return () => clearTimeout(syncRef.current);
-  }, [contacts, apiReady]);
+    if (contacts.length > 0 || !loading) {
+      localStorage.setItem(CACHE_KEYS.contacts, JSON.stringify(contacts));
+    }
+  }, [contacts, loading]);
 
-  // Sync call history
-  const historySyncRef = useRef<ReturnType<typeof setTimeout>>(null);
   useEffect(() => {
-    if (!apiReady || callHistory.length === 0) return;
-    clearTimeout(historySyncRef.current);
-    historySyncRef.current = setTimeout(async () => {
-      const last = callHistory[callHistory.length - 1];
-      await api.history.create(last).catch(() => {});
-    }, 2000);
-    return () => clearTimeout(historySyncRef.current);
-  }, [callHistory.length, apiReady]);
+    localStorage.setItem(CACHE_KEYS.history, JSON.stringify(callHistory));
+  }, [callHistory]);
 
   useEffect(() => {
     const updateHeight = () => setContainerHeight(window.innerHeight - 340);
@@ -152,7 +126,15 @@ export default function App() {
     setToast({ message, type });
   }, []);
 
-  const addCallRecord = useCallback((contact: Contact, outcome: "Answered" | "Missed") => {
+  // --- Add call record (MongoDB + local) ---
+  const addCallRecord = useCallback(async (contact: Contact, outcome: "Answered" | "Missed") => {
+    setContacts((prev) =>
+      prev.map((c) =>
+        c.id === contact.id
+          ? { ...c, status: outcome, lastCalledAt: Date.now(), callCount: (c.callCount || 0) + 1 }
+          : c
+      )
+    );
     const record: CallRecord = {
       id: `call-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       contactId: contact.id,
@@ -162,15 +144,13 @@ export default function App() {
       timestamp: Date.now(),
     };
     setCallHistory((prev) => [...prev, record]);
-    setContacts((prev) =>
-      prev.map((c) =>
-        c.id === contact.id
-          ? { ...c, status: outcome, lastCalledAt: Date.now(), callCount: (c.callCount || 0) + 1 }
-          : c
-      )
-    );
+    // Fire-and-forget to API
+    api.contacts.update(contact.id, { status: outcome, lastCalledAt: Date.now(), callCount: (contact.callCount || 0) + 1 })
+      .catch(() => setIsOnline(false));
+    api.history.create(record).catch(() => {});
   }, []);
 
+  // --- Filter + sort ---
   const filteredContacts = useMemo(() => {
     let result = searchQuery.trim()
       ? contacts.filter((c) => {
@@ -210,6 +190,22 @@ export default function App() {
 
   const { containerRef, onScroll, visibleItems, paddingTop, paddingBottom } = useVirtualScroll(filteredContacts, containerHeight);
 
+  const getDuplicateCount = useCallback(() => {
+    const coreCount: Record<string, number> = {};
+    contacts.forEach((c) => { const core = getIndianPhoneCoreDigits(c.phone); coreCount[core] = (coreCount[core] || 0) + 1; });
+    return Object.values(coreCount).reduce((t, v) => v > 1 ? t + v - 1 : t, 0);
+  }, [contacts]);
+
+  const getDuplicateContacts = useCallback((): Contact[] => {
+    const coreCount: Record<string, number> = {};
+    contacts.forEach((c) => { const core = getIndianPhoneCoreDigits(c.phone); coreCount[core] = (coreCount[core] || 0) + 1; });
+    return contacts.filter((c) => { const core = getIndianPhoneCoreDigits(c.phone); return coreCount[core] > 1; });
+  }, [contacts]);
+
+  const totalDuplicates = useMemo(() => getDuplicateCount(), [getDuplicateCount]);
+
+  // --- Handlers: every operation calls API first, then updates local state ---
+
   const handleInitiateCall = useCallback((contact: Contact) => {
     setCallingContact(contact);
     const cleanNumber = contact.phone.replace(/[^+\d]/g, "");
@@ -229,87 +225,113 @@ export default function App() {
     triggerToast(`Logged "${contact.name}" as ${outcome}!`, "success");
   }, [addCallRecord, triggerToast]);
 
-  const handleImportParsedContacts = useCallback((importedList: Contact[]) => {
-    let skippedCount = 0;
-    setContacts((prev) => {
-      const existingCores = new Set(prev.map((c) => getIndianPhoneCoreDigits(c.phone)));
-      const filteredIncoming: Contact[] = [];
-      importedList.forEach((item) => {
-        const core = getIndianPhoneCoreDigits(item.phone);
-        if (existingCores.has(core)) { skippedCount++; }
-        else { existingCores.add(core); filteredIncoming.push(item); }
-      });
-      setTimeout(() => {
-        triggerToast(skippedCount > 0
-          ? `Loaded ${filteredIncoming.length} new. ${skippedCount} duplicates filtered.`
-          : `Imported ${filteredIncoming.length} contacts!`, "success");
-      }, 50);
-      return [...prev, ...filteredIncoming];
-    });
-  }, [triggerToast]);
-
-  const getDuplicateCount = useCallback(() => {
-    const coreCount: Record<string, number> = {};
-    contacts.forEach((c) => { const core = getIndianPhoneCoreDigits(c.phone); coreCount[core] = (coreCount[core] || 0) + 1; });
-    return Object.values(coreCount).reduce((t, v) => v > 1 ? t + v - 1 : t, 0);
-  }, [contacts]);
-
-  const getDuplicateContacts = useCallback((): Contact[] => {
-    const coreCount: Record<string, number> = {};
-    contacts.forEach((c) => { const core = getIndianPhoneCoreDigits(c.phone); coreCount[core] = (coreCount[core] || 0) + 1; });
-    return contacts.filter((c) => { const core = getIndianPhoneCoreDigits(c.phone); return coreCount[core] > 1; });
-  }, [contacts]);
-
-  const totalDuplicates = useMemo(() => getDuplicateCount(), [getDuplicateCount]);
-
-  const handleDeduplicateList = useCallback(() => {
-    const coreSeen = new Set<string>();
-    const keptContacts: Contact[] = [];
-    const priority: Record<string, number> = { Answered: 1, Missed: 2, Pending: 3 };
-    [...contacts].sort((a, b) => (priority[a.status] || 4) - (priority[b.status] || 4)).forEach((c) => {
-      const core = getIndianPhoneCoreDigits(c.phone);
-      if (!coreSeen.has(core)) { coreSeen.add(core); keptContacts.push(c); }
-    });
-    const keptIds = new Set(keptContacts.map((c) => c.id));
-    setContacts((prev) => prev.filter((c) => keptIds.has(c)));
-    triggerToast(`Removed ${contacts.length - keptContacts.length} duplicates!`, "success");
-  }, [contacts, triggerToast]);
-
-  const handleLoadDemoOutreachList = useCallback(() => {
-    setContacts((prev) => [...prev,
-      { id: `demo-${Date.now()}-1`, name: "Evangelist Timothy", phone: "+91 99400 55667", status: "Pending" },
-      { id: `demo-${Date.now()}-2`, name: "Sister Phoebe", phone: "+91 93810 77889", status: "Pending" },
-      { id: `demo-${Date.now()}-3`, name: "Brother Stephen", phone: "+91 97900 11224", status: "Pending" },
-    ]);
-    triggerToast("Loaded demo list!", "success");
-  }, [triggerToast]);
-
-  const handleSmartAddParsed = useCallback((name: string, phone: string) => {
-    setContacts((prev) => [{ id: `smart-${Date.now()}`, name, phone, status: "Pending" }, ...prev]);
-    triggerToast(`Added "${name}" to dialer!`, "success");
-  }, [triggerToast]);
-
-  const handleManualAddContact = useCallback((name: string, phone: string) => {
-    setContacts((prev) => [{ id: `manual-${Date.now()}`, name, phone, status: "Pending" }, ...prev]);
+  const handleManualAddContact = useCallback(async (name: string, phone: string) => {
+    const tempId = `new-${Date.now()}`;
+    const optimistic: Contact = { id: tempId, name, phone, status: "Pending" };
+    setContacts((prev) => [optimistic, ...prev]);
     triggerToast(`Saved "${name}" successfully.`, "success");
-  }, [triggerToast]);
 
-  const handleUpdateContactDetails = useCallback((id: string, name: string, phone: string) => {
-    setContacts((prev) => prev.map((c) => c.id === id ? { ...c, name, phone } : c));
-    triggerToast("Updated successfully.", "success");
-    setEditingContact(null);
-  }, [triggerToast]);
-
-  const handleDeleteContactFromLedger = useCallback((id: string, name: string) => {
-    if (window.confirm(`Delete "${name}" permanently?`)) {
-      setContacts((prev) => prev.filter((c) => c.id !== id));
-      triggerToast("Contact deleted.", "success");
+    const res = await api.contacts.create({ name, phone, status: "Pending" });
+    if (res?.contact) {
+      setContacts((prev) => prev.map((c) => (c.id === tempId ? fromAPI(res.contact) : c)));
+      setIsOnline(true);
+    } else {
+      setIsOnline(false);
     }
   }, [triggerToast]);
 
-  const handleExecuteEventsReset = useCallback(() => {
+  const handleSmartAddParsed = useCallback((name: string, phone: string) => {
+    handleManualAddContact(name, phone);
+  }, [handleManualAddContact]);
+
+  const handleUpdateContactDetails = useCallback(async (id: string, name: string, phone: string) => {
+    setContacts((prev) => prev.map((c) => c.id === id ? { ...c, name, phone } : c));
+    setEditingContact(null);
+    triggerToast("Updated successfully.", "success");
+
+    const res = await api.contacts.update(id, { name, phone });
+    if (res?.contact) {
+      setContacts((prev) => prev.map((c) => (c.id === id ? fromAPI(res.contact) : c)));
+      setIsOnline(true);
+    } else {
+      setIsOnline(false);
+    }
+  }, [triggerToast]);
+
+  const handleDeleteContactFromLedger = useCallback((id: string, name: string) => {
+    if (!window.confirm(`Delete "${name}" permanently?`)) return;
+    setContacts((prev) => prev.filter((c) => c.id !== id));
+    triggerToast("Contact deleted.", "success");
+
+    api.contacts.delete(id).then(() => setIsOnline(true)).catch(() => setIsOnline(false));
+  }, [triggerToast]);
+
+  const handleImportParsedContacts = useCallback(async (importedList: Contact[]) => {
+    const existingCores = new Set(contacts.map((c) => getIndianPhoneCoreDigits(c.phone)));
+    const newOnes = importedList.filter((i) => !existingCores.has(getIndianPhoneCoreDigits(i.phone)));
+    if (newOnes.length === 0) { triggerToast("All contacts already exist.", "error"); return; }
+
+    setContacts((prev) => [...newOnes, ...prev]);
+    triggerToast(`Imported ${newOnes.length} contacts!`, "success");
+
+    const res = await api.contacts.sync([...contacts, ...newOnes]);
+    if (res?.contacts) {
+      setContacts(res.contacts.map(fromAPI));
+      setIsOnline(true);
+    } else {
+      setIsOnline(false);
+    }
+  }, [contacts, triggerToast]);
+
+  const handleDeduplicateList = useCallback(async () => {
+    const res = await api.contacts.dedup();
+    if (res?.success) {
+      const fresh = await api.contacts.list();
+      if (fresh?.contacts) {
+        setContacts(fresh.contacts.map(fromAPI));
+        setIsOnline(true);
+      }
+      triggerToast(`Merged ${res.removed || 0} duplicates!`, "success");
+    } else {
+      setIsOnline(false);
+      // Fallback: local dedup
+      const coreSeen = new Set<string>();
+      const kept: Contact[] = [];
+      const priority: Record<string, number> = { Answered: 1, Missed: 2, Pending: 3 };
+      [...contacts].sort((a, b) => (priority[a.status] || 4) - (priority[b.status] || 4)).forEach((c) => {
+        const core = getIndianPhoneCoreDigits(c.phone);
+        if (!coreSeen.has(core)) { coreSeen.add(core); kept.push(c); }
+      });
+      setContacts(kept);
+      triggerToast(`Removed ${contacts.length - kept.length} duplicates (offline).`, "success");
+    }
+  }, [contacts, triggerToast]);
+
+  const handleLoadDemoOutreachList = useCallback(async () => {
+    const demos = [
+      { id: `demo-${Date.now()}-1`, name: "Evangelist Timothy", phone: "+91 99400 55667", status: "Pending" as const },
+      { id: `demo-${Date.now()}-2`, name: "Sister Phoebe", phone: "+91 93810 77889", status: "Pending" as const },
+      { id: `demo-${Date.now()}-3`, name: "Brother Stephen", phone: "+91 97900 11224", status: "Pending" as const },
+    ];
+    setContacts((prev) => [...demos, ...prev]);
+    triggerToast("Loaded demo list!", "success");
+
+    const res = await api.contacts.sync([...demos, ...contacts]);
+    if (res?.contacts) setContacts(res.contacts.map(fromAPI));
+  }, [contacts, triggerToast]);
+
+  const handleExecuteEventsReset = useCallback(async () => {
     setContacts((prev) => prev.map((c) => c.status !== "Pending" ? { ...c, status: "Pending", lastCalledAt: undefined } : c));
     triggerToast("Reset all events to Pending!", "success");
+
+    const res = await api.contacts.reset();
+    if (res?.success) {
+      const fresh = await api.contacts.list();
+      if (fresh?.contacts) setContacts(fresh.contacts.map(fromAPI));
+      setIsOnline(true);
+    } else {
+      setIsOnline(false);
+    }
   }, [triggerToast]);
 
   const handleExportBackup = useCallback(() => {
@@ -329,17 +351,16 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const text = event.target?.result as string;
         const parsed = JSON.parse(text);
-        if (parsed.contacts && Array.isArray(parsed.contacts)) {
-          setContacts(parsed.contacts);
-          if (parsed.callHistory) setCallHistory(parsed.callHistory);
+        const restored = parsed.contacts || (Array.isArray(parsed) ? parsed : []);
+        if (restored.length > 0) {
+          setContacts(restored);
+          const res = await api.contacts.sync(restored);
+          if (res?.contacts) setContacts(res.contacts.map(fromAPI));
           triggerToast("Database restored!", "success");
-        } else if (Array.isArray(parsed)) {
-          setContacts(parsed);
-          triggerToast("Database restored (legacy format)!", "success");
         } else {
           triggerToast("Invalid backup format.", "error");
         }
@@ -349,6 +370,17 @@ export default function App() {
     e.target.value = "";
     setIsActionMenuOpen(false);
   }, [triggerToast]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-900 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-slate-400">Loading contacts...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] dark:bg-slate-900 text-slate-800 dark:text-slate-100 antialiased font-sans relative pb-20 transition-colors duration-200">
@@ -376,7 +408,10 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white select-none leading-tight">DaCaller</h1>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide uppercase select-none">{contacts.length} contacts</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium tracking-wide uppercase select-none flex items-center gap-1">
+                {isOnline ? <Wifi className="w-3 h-3 text-emerald-500" /> : <WifiOff className="w-3 h-3 text-rose-400" />}
+                {contacts.length} contacts
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-1.5">

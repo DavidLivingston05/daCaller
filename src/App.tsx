@@ -45,6 +45,7 @@ export default function App() {
   const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
   const [isOnline, setIsOnline] = useState(true);
   const [dbConnected, setDbConnected] = useState<boolean | null>(null);
+  const [dbError, setDbError] = useState<string | null>(null);
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "error">("idle");
   const [loading, setLoading] = useState(true);
 
@@ -70,7 +71,8 @@ export default function App() {
       setSyncStatus("syncing");
       const status = await api.server.status();
       setDbConnected(status?.online === true);
-      if (!status) { setSyncStatus("error"); setIsOnline(false); }
+      setDbError(status?.error || null);
+      if (!status || !status.online) { setSyncStatus("error"); setIsOnline(false); }
 
       try {
         const res = await api.contacts.list();
@@ -473,7 +475,14 @@ export default function App() {
         <div className="max-w-lg mx-auto px-4 pt-2">
           <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-amber-800 dark:text-amber-200 select-none">
             <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>MongoDB not connected. Set <code className="font-mono text-[11px] bg-amber-100 dark:bg-amber-800/50 px-1 rounded">MONGODB_URI</code> in Vercel env vars to save data.</span>
+            <span>
+              MongoDB not connected.
+              {dbError ? (
+                <span className="block mt-0.5 font-mono text-[11px] text-amber-700 dark:text-amber-300">{dbError}</span>
+              ) : (
+                <span className="block mt-0.5">Set <code className="font-mono text-[11px] bg-amber-100 dark:bg-amber-800/50 px-1 rounded">MONGODB_URI</code> in Vercel env vars.</span>
+              )}
+            </span>
           </div>
         </div>
       )}

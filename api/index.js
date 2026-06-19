@@ -1,6 +1,6 @@
 import express from "express";
 import cors from "cors";
-import mongoose from "mongoose";
+import { connectDB } from "./db.js";
 import contactsRouter from "./routes/contacts.js";
 import historyRouter from "./routes/history.js";
 import statsRouter from "./routes/stats.js";
@@ -10,14 +10,19 @@ const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: "10mb" }));
 
-// Health check — includes MongoDB connection status
+// Status — actually tries connecting to MongoDB
 app.get("/api/status", async (req, res) => {
-  const mongoState = mongoose.connection.readyState; // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
-  res.json({
-    mongo: mongoState === 1 ? "connected" : mongoState === 2 ? "connecting" : "disconnected",
-    online: mongoState === 1,
-    timestamp: Date.now(),
-  });
+  try {
+    await connectDB();
+    res.json({ mongo: "connected", online: true, timestamp: Date.now() });
+  } catch (e) {
+    res.json({
+      mongo: "disconnected",
+      online: false,
+      error: e.message || "Unknown connection error",
+      timestamp: Date.now(),
+    });
+  }
 });
 
 // Routes

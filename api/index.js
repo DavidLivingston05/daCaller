@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import mongoose from "mongoose";
 import contactsRouter from "./routes/contacts.js";
 import historyRouter from "./routes/history.js";
 import statsRouter from "./routes/stats.js";
@@ -9,9 +10,14 @@ const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: "10mb" }));
 
-// Health check
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", timestamp: Date.now() });
+// Health check — includes MongoDB connection status
+app.get("/api/status", async (req, res) => {
+  const mongoState = mongoose.connection.readyState; // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
+  res.json({
+    mongo: mongoState === 1 ? "connected" : mongoState === 2 ? "connecting" : "disconnected",
+    online: mongoState === 1,
+    timestamp: Date.now(),
+  });
 });
 
 // Routes

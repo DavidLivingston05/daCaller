@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Search, X, Plus, MoreVertical, Sparkles, Download, Database, Moon, Sun,
-  PhoneCall, BarChart3, List, Radio, Wifi, WifiOff
+  PhoneCall, BarChart3, List, Radio, Wifi, WifiOff, AlertTriangle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Contact, CallRecord, SortOption, TabOption, ViewMode } from "./types";
@@ -44,6 +44,7 @@ export default function App() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
   const [isOnline, setIsOnline] = useState(true);
+  const [dbConnected, setDbConnected] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -61,9 +62,13 @@ export default function App() {
   const [sortBy, setSortBy] = useState<SortOption>("Status");
   const [containerHeight, setContainerHeight] = useState(600);
 
-  // --- Load from MongoDB on mount, fall back to localStorage cache ---
+  // --- Check server status & load from MongoDB on mount ---
   useEffect(() => {
     (async () => {
+      // Check DB connection status first
+      const status = await api.server.status();
+      setDbConnected(status?.online === true);
+
       try {
         const res = await api.contacts.list();
         if (res?.contacts && res.contacts.length > 0) {
@@ -448,6 +453,14 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      {dbConnected === false && (
+        <div className="max-w-lg mx-auto px-4 pt-2">
+          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-lg px-3 py-2 flex items-center gap-2 text-xs text-amber-800 dark:text-amber-200 select-none">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>MongoDB not connected. Set <code className="font-mono text-[11px] bg-amber-100 dark:bg-amber-800/50 px-1 rounded">MONGODB_URI</code> in Vercel env vars to save data.</span>
+          </div>
+        </div>
+      )}
       <div id="app" className="max-w-lg mx-auto px-4 pt-4 pb-4 flex flex-col gap-4">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-2">

@@ -48,6 +48,9 @@ export const api = {
     reset: () =>
       request("/contacts/reset", { method: "POST" }),
   },
+  server: {
+    status: () => request("/status"),
+  },
   history: {
     list: (page = 1) => request(`/history?page=${page}`),
     create: (data) =>

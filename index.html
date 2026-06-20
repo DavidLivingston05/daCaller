@@ -21,7 +21,22 @@
     <script>
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js");
+          navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).then((reg) => {
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: "SKIP_WAITING" });
+            }
+            reg.addEventListener("updatefound", () => {
+              const newSW = reg.installing;
+              newSW.addEventListener("statechange", () => {
+                if (newSW.state === "installed" && navigator.serviceWorker.controller) {
+                  newSW.postMessage({ type: "SKIP_WAITING" });
+                }
+              });
+            });
+          });
+          navigator.serviceWorker.addEventListener("controllerchange", () => {
+            window.location.reload();
+          });
         });
       }
     </script>

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { motion } from "motion/react";
-import { PhoneCall, PhoneMissed, Clock, Users, TrendingUp, BarChart3 } from "lucide-react";
+import { PhoneCall, PhoneMissed, XCircle, Clock, Users, TrendingUp, BarChart3 } from "lucide-react";
 import { Contact, CallRecord } from "../types";
 
 interface StatsDashboardProps {
@@ -14,18 +14,20 @@ export default function StatsDashboard({ contacts, callHistory, onClose }: Stats
     const total = contacts.length;
     const answered = contacts.filter((c) => c.status === "Answered").length;
     const missed = contacts.filter((c) => c.status === "Missed").length;
+    const wrongNumber = contacts.filter((c) => c.status === "Wrong Number").length;
     const pending = contacts.filter((c) => c.status === "Pending").length;
-    const rate = total > 0 ? Math.round((answered / (answered + missed)) * 100) : 0;
+    const rate = answered + missed > 0 ? Math.round((answered / (answered + missed)) * 100) : 0;
     const todayCalls = callHistory.filter(
       (c) => new Date(c.timestamp).toDateString() === new Date().toDateString()
     ).length;
-    return { total, answered, missed, pending, rate, todayCalls };
+    return { total, answered, missed, wrongNumber, pending, rate, todayCalls };
   }, [contacts, callHistory]);
 
   const cards = [
     { label: "Total Contacts", value: stats.total, icon: Users, color: "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" },
     { label: "Answered", value: stats.answered, icon: PhoneCall, color: "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400" },
     { label: "Missed", value: stats.missed, icon: PhoneMissed, color: "bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400" },
+    { label: "Wrong No.", value: stats.wrongNumber, icon: XCircle, color: "bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400" },
     { label: "Pending", value: stats.pending, icon: Clock, color: "bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400" },
   ];
 

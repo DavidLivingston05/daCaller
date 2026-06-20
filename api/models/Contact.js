@@ -7,7 +7,7 @@ const ContactSchema = new mongoose.Schema({
   role: { type: String, default: "" },
   status: {
     type: String,
-    enum: ["Pending", "Answered", "Missed"],
+    enum: ["Pending", "Answered", "Missed", "Wrong Number"],
     default: "Pending",
   },
   group: { type: String, default: "" },

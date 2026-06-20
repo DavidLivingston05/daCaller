@@ -32,9 +32,10 @@ export default function ImportModal({ onClose, onImportParsed, onToast, onLoadDe
         const name = cols[0].replace(/^["']|["']$/g, "").trim();
         const phone = cols[1].replace(/^["']|["']$/g, "").trim();
         const statusVal = cols[2] ? cols[2].replace(/^["']|["']$/g, "").trim() : "Pending";
-        let finalStatus: 'Pending' | 'Answered' | 'Missed' = "Pending";
+        let finalStatus: 'Pending' | 'Answered' | 'Missed' | 'Wrong Number' = "Pending";
         if (statusVal.toLowerCase() === "answered") finalStatus = "Answered";
         if (statusVal.toLowerCase() === "missed") finalStatus = "Missed";
+        if (statusVal.toLowerCase() === "wrong number" || statusVal.toLowerCase() === "wrong") finalStatus = "Wrong Number";
         if (name && phone) {
           const { isValid, formatted } = validateAndFormatIndianPhone(phone);
           parsed.push({ id: `csv-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 6)}`, name, phone: isValid ? formatted : phone, status: finalStatus });

@@ -39,8 +39,9 @@ export default function ResetModal({ onClose, onConfirm, onToast }: ResetModalPr
         <div className="text-center">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white">Reset All Events?</h3>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-            This will revert all <span className="text-emerald-600 font-semibold">Answered</span> and{" "}
-            <span className="text-rose-600 font-semibold">Missed</span> records back to{" "}
+            This will revert <span className="text-emerald-600 font-semibold">Answered</span>,{" "}
+            <span className="text-rose-600 font-semibold">Missed</span>, and{" "}
+            <span className="text-violet-600 font-semibold">Wrong Number</span> records back to{" "}
             <span className="text-amber-600 font-semibold">Pending</span> to allow calling again.
           </p>
         </div>

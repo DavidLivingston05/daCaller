@@ -138,7 +138,7 @@ export default function App() {
   }, []);
 
   // --- Add call record (MongoDB + local) ---
-  const addCallRecord = useCallback(async (contact: Contact, outcome: "Answered" | "Missed") => {
+  const addCallRecord = useCallback(async (contact: Contact, outcome: "Answered" | "Missed" | "Wrong Number") => {
     setContacts((prev) =>
       prev.map((c) =>
         c.id === contact.id
@@ -176,7 +176,7 @@ export default function App() {
 
     result.sort((a, b) => {
       if (sortBy === "Status") {
-        const p: Record<string, number> = { Pending: 1, Missed: 2, Answered: 3 };
+        const p: Record<string, number> = { Pending: 1, Missed: 2, "Wrong Number": 3, Answered: 4 };
         const va = p[a.status] || 4;
         const vb = p[b.status] || 4;
         return va !== vb ? va - vb : a.name.localeCompare(b.name);
@@ -197,6 +197,7 @@ export default function App() {
     pending: contacts.filter((c) => c.status === "Pending").length,
     answered: contacts.filter((c) => c.status === "Answered").length,
     missed: contacts.filter((c) => c.status === "Missed").length,
+    "wrong number": contacts.filter((c) => c.status === "Wrong Number").length,
   }), [contacts]);
 
   const { containerRef, onScroll, visibleItems, paddingTop, paddingBottom } = useVirtualScroll(filteredContacts, containerHeight);
@@ -266,7 +267,7 @@ export default function App() {
     window.location.href = `tel:${cleanNumber}`;
   }, []);
 
-  const handleLogCallOutcome = useCallback((outcome: "Answered" | "Missed" | "Cancel") => {
+  const handleLogCallOutcome = useCallback((outcome: "Answered" | "Missed" | "Wrong Number" | "Cancel") => {
     if (!callingContact) return;
     if (outcome === "Cancel") { setCallingContact(null); return; }
     addCallRecord(callingContact, outcome);
@@ -274,7 +275,7 @@ export default function App() {
     setCallingContact(null);
   }, [callingContact, addCallRecord, triggerToast]);
 
-  const handleRapidLogOutcome = useCallback((contact: Contact, outcome: "Answered" | "Missed") => {
+  const handleRapidLogOutcome = useCallback((contact: Contact, outcome: "Answered" | "Missed" | "Wrong Number") => {
     addCallRecord(contact, outcome);
     triggerToast(`Logged "${contact.name}" as ${outcome}!`, "success");
   }, [addCallRecord, triggerToast]);
@@ -594,18 +595,20 @@ export default function App() {
 
         <div className="flex items-center justify-between gap-2 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-1.5 shadow-sm">
           <div className="flex gap-1 overflow-x-auto scrollbar-none" id="filterTabs">
-            {(["All", "Pending", "Missed", "Answered"] as const).map((tab) => {
+            {(["All", "Pending", "Missed", "Wrong Number", "Answered"] as const).map((tab) => {
               const isActive = activeTab === tab;
               const colors: Record<string, string> = {
                 All: "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-sm",
                 Pending: "bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-700",
                 Missed: "bg-rose-100 dark:bg-rose-900/50 text-rose-800 dark:text-rose-200 border border-rose-200 dark:border-rose-700",
                 Answered: "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-700",
+                "Wrong Number": "bg-violet-100 dark:bg-violet-900/50 text-violet-800 dark:text-violet-200 border border-violet-200 dark:border-violet-700",
               };
+              const countKey = tab === "Wrong Number" ? "wrong number" : tab.toLowerCase();
               return (
                 <button key={tab} type="button" onClick={() => setActiveTab(tab)}
                   className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all cursor-pointer ${isActive ? colors[tab] : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"}`}>
-                  {tab} {counts[tab.toLowerCase() as keyof typeof counts]}
+                  {tab === "Wrong Number" ? "Wrong No." : tab} {counts[countKey as keyof typeof counts]}
                 </button>
               );
             })}

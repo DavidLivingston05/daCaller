@@ -1,11 +1,11 @@
 import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Phone, PhoneCall, PhoneMissed, X, ChevronLeft, ChevronRight, CheckCircle } from "lucide-react";
+import { Phone, PhoneCall, PhoneMissed, XCircle, X, ChevronLeft, ChevronRight, CheckCircle } from "lucide-react";
 import { Contact } from "../types";
 
 interface RapidDialProps {
   contacts: Contact[];
-  onLogOutcome: (contact: Contact, outcome: "Answered" | "Missed") => void;
+  onLogOutcome: (contact: Contact, outcome: "Answered" | "Missed" | "Wrong Number") => void;
   onClose: () => void;
 }
 
@@ -42,7 +42,7 @@ export default function RapidDial({ contacts, onLogOutcome, onClose }: RapidDial
   }, [current]);
 
   const handleOutcome = useCallback(
-    (outcome: "Answered" | "Missed") => {
+    (outcome: "Answered" | "Missed" | "Wrong Number") => {
       if (!current) return;
       onLogOutcome(current, outcome);
       setCompleted((prev) => [...prev, current.id]);
@@ -164,20 +164,27 @@ export default function RapidDial({ contacts, onLogOutcome, onClose }: RapidDial
             Call {current.name.split(" ")[0]}
           </button>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-2">
             <button
               onClick={() => handleOutcome("Answered")}
-              className="bg-emerald-700/80 hover:bg-emerald-600 text-white font-semibold py-3 rounded-xl active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 text-sm"
+              className="bg-emerald-700/80 hover:bg-emerald-600 text-white font-semibold py-3 rounded-xl active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs"
             >
-              <PhoneCall className="w-4 h-4" />
+              <PhoneCall className="w-3.5 h-3.5" />
               Answered
             </button>
             <button
               onClick={() => handleOutcome("Missed")}
-              className="bg-rose-700/80 hover:bg-rose-600 text-white font-semibold py-3 rounded-xl active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 text-sm"
+              className="bg-rose-700/80 hover:bg-rose-600 text-white font-semibold py-3 rounded-xl active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs"
             >
-              <PhoneMissed className="w-4 h-4" />
+              <PhoneMissed className="w-3.5 h-3.5" />
               Missed
+            </button>
+            <button
+              onClick={() => handleOutcome("Wrong Number")}
+              className="bg-violet-700/80 hover:bg-violet-600 text-white font-semibold py-3 rounded-xl active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs"
+            >
+              <XCircle className="w-3.5 h-3.5" />
+              Wrong No.
             </button>
           </div>
         </div>

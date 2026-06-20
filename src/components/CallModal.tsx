@@ -1,11 +1,11 @@
 import React from "react";
 import { motion } from "motion/react";
 import { Contact } from "../types";
-import { PhoneCall, PhoneMissed, X } from "lucide-react";
+import { PhoneCall, PhoneMissed, X, XCircle } from "lucide-react";
 
 interface CallModalProps {
   contact: Contact;
-  onLogLevel: (outcome: "Answered" | "Missed" | "Cancel") => void;
+  onLogLevel: (outcome: "Answered" | "Missed" | "Wrong Number" | "Cancel") => void;
 }
 
 export default function CallModal({ contact, onLogLevel }: CallModalProps) {
@@ -42,6 +42,11 @@ export default function CallModal({ contact, onLogLevel }: CallModalProps) {
             className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-sm cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 text-sm">
             <PhoneMissed className="w-4 h-4" />
             Didn't Pick Up (Missed)
+          </button>
+          <button id="call-outcome-wrong-btn" type="button" onClick={() => onLogLevel("Wrong Number")}
+            className="w-full bg-violet-600 hover:bg-violet-700 text-white font-semibold py-3.5 rounded-xl transition-all shadow-sm cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2 text-sm">
+            <XCircle className="w-4 h-4" />
+            Wrong Number
           </button>
           <button id="call-outcome-cancel-btn" type="button" onClick={() => onLogLevel("Cancel")}
             className="w-full bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300 font-medium py-3 rounded-xl transition-all mt-1 text-xs flex items-center justify-center gap-1.5 cursor-pointer active:scale-[0.98]">

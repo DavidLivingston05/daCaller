@@ -17,6 +17,8 @@ export default function ContactRow({ contact, onCall, onEdit, onDelete }: Contac
     badgeStyle = "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-700";
   } else if (contact.status === "Missed") {
     badgeStyle = "bg-rose-50/60 dark:bg-rose-900/30 text-rose-800 dark:text-rose-300 border-rose-200/60 dark:border-rose-700";
+  } else if (contact.status === "Wrong Number") {
+    badgeStyle = "bg-violet-50 dark:bg-violet-900/30 text-violet-800 dark:text-violet-300 border-violet-200/60 dark:border-violet-700";
   }
 
   return (

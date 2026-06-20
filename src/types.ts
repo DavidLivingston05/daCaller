@@ -3,7 +3,7 @@ export interface Contact {
   name: string;
   phone: string;
   role?: string;
-  status: 'Pending' | 'Answered' | 'Missed';
+  status: 'Pending' | 'Answered' | 'Missed' | 'Wrong Number';
   group?: string;
   notes?: string;
   lastCalledAt?: number;
@@ -15,11 +15,11 @@ export interface CallRecord {
   contactId: string;
   name: string;
   phone: string;
-  outcome: 'Answered' | 'Missed';
+  outcome: 'Answered' | 'Missed' | 'Wrong Number';
   timestamp: number;
   duration?: number;
 }
 
 export type SortOption = 'Status' | 'Name' | 'Recent';
-export type TabOption = 'All' | 'Pending' | 'Answered' | 'Missed';
+export type TabOption = 'All' | 'Pending' | 'Answered' | 'Missed' | 'Wrong Number';
 export type ViewMode = 'list' | 'rapid' | 'stats';

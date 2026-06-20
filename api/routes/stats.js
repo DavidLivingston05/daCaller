@@ -10,10 +10,11 @@ router.get("/", async (req, res) => {
   try {
     await connectDB();
 
-    const [total, answered, missed, pending] = await Promise.all([
+    const [total, answered, missed, wrongNumber, pending] = await Promise.all([
       Contact.countDocuments(),
       Contact.countDocuments({ status: "Answered" }),
       Contact.countDocuments({ status: "Missed" }),
+      Contact.countDocuments({ status: "Wrong Number" }),
       Contact.countDocuments({ status: "Pending" }),
     ]);
 
@@ -39,6 +40,7 @@ router.get("/", async (req, res) => {
       total,
       answered,
       missed,
+      wrongNumber,
       pending,
       todayCalls,
       answerRate,
